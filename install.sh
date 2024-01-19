@@ -9,10 +9,8 @@ sudo apt install ./teamviewer_arm64.deb
 sudo apt -y install linphone
 sudo apt -y install linphone-cli
 pip install paho-mqtt
-sudo apt-get -y install git swig python3-dev python3-setuptools
-git clone --recursive https://github.com/orangepi-xunlong/wiringOP-Python -b next
-cd wiringOP-Python
-git submodule update --init --remote
-python3 generate-bindings.py > bindings.i
-sudo python3 setup.py install
+git clone https://github.com/orangepi-xunlong/wiringOP.git -b next
+cd wiringOP
+sudo ./build clean
+sudo ./build
 sudo raspi-config
