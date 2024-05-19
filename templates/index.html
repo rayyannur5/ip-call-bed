@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Nursecall Two Ways Device</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <div class="container">
+      <h1>Input Form</h1>
+      <form method="post">
+        <label for="_id">ID</label>
+        <input type="text" id="_id" name="id" value="{{ id }}"><br>
+
+        <label for="_ssid">SSID</label>
+        <input type="text" id="_ssid" name="ssid" value="{{ ssid }}"><br>
+
+        <label for="_pswd">PASS</label>
+        <input type="text" id="_pswd" name="pswd" value="{{ pswd }}"><br>
+
+        <button type="submit">Save</button>
+	<a href="/reboot">
+           <button type="button" id="reboot-button">Reboot</button>
+	</a>
+      </form>
+    </div>
+  </body>
+</html>
