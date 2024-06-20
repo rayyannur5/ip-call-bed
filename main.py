@@ -140,7 +140,8 @@ def call(sip):
     print(f"LOG| {res}")
 
 def checkTwoWay():
-    x = requests.get(f'http://{host}/ip-call-server/bed/get_one.php?id={id}').json()
+    requests.get(f"http://{host}/ip-call/server/bed/set_ip.php?id={id}&ip={wifi.ip()}")
+    x = requests.get(f'http://{host}/ip-call/server/bed/get_one.php?id={id}').json()
     execute(f"amixer set Master {x['data'][0]['vol']}%")
     return x['data'][0]['mode'], int(x['data'][0]['vol']), int(x['data'][0]['mic'])
 

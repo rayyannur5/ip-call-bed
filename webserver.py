@@ -10,23 +10,23 @@ def home():
         ssid = request.form.get('ssid')
         pswd = request.form.get('pswd')
         
-        f = open("/home/opi1/ip-call-bed/config/id.txt", "w")
+        f = open("/home/nursecall/ip-call-bed/config/id.txt", "w")
         f.write(id)
         f.close()
         
-        f = open("/home/opi1/ip-call-bed/config/ssid.txt", "w")
+        f = open("/home/nursecall/ip-call-bed/config/ssid.txt", "w")
         f.write(ssid)
         f.close()
         
-        f = open("/home/opi1/ip-call-bed/config/pass.txt", "w")
+        f = open("/home/nursecall/ip-call-bed/config/pass.txt", "w")
         f.write(pswd)
         f.close()
         
         return redirect('/')
     
-    ssid = open("/home/opi1/ip-call-bed/config/ssid.txt", "r")
-    pswd = open("/home/opi1/ip-call-bed/config/pass.txt", "r")
-    id_r = open("/home/opi1/ip-call-bed/config/id.txt", "r")
+    ssid = open("/home/nursecall/ip-call-bed/config/ssid.txt", "r")
+    pswd = open("/home/nursecall/ip-call-bed/config/pass.txt", "r")
+    id_r = open("/home/nursecall/ip-call-bed/config/id.txt", "r")
     _ssid = ssid.read()
     _pswd = pswd.read()
     _id_r = id_r.read()

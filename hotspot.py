@@ -11,9 +11,9 @@ def millis():
 
 execute(f"gpio mode 4 in")
 def run():
-    execute('ogg123 /home/opi1/ip-call-bed/bluetooth-connected.ogg')
-    execute("nmcli c modify Hotspot 802-11-wireless-security.pmf 1")
-    execute("nmcli dev wifi hotspot ssid \"Nurse Call Two Ways\" password 12345678")
+    execute('ogg123 /home/nursecall/ip-call-bed/bluetooth-connected.ogg')
+#     execute("nmcli c modify Hotspot 802-11-wireless-security.pmf 1")
+    execute("nmcli connection up Hotspot")
     
 while True:
     if '0' in execute(f"gpio read 4"):
