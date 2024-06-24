@@ -22,12 +22,14 @@ id_r.close()
 if id == "":
     exit()
 
-btn_call 		= 3
-btn_cancel 		= 4
-btn_emergency 	= 9
-btn_infus 		= 0
-led_1 			= 5
-buzzer			= 1
+btn_call 		= 25
+btn_cancel 		= 7
+btn_emergency 	= 0
+btn_infus 		= 2
+led_cancel		= 8
+led_emergency	= 1
+led_infus		= 5
+buzzer			= 17
 host 			= "192.168.0.1"
 port_sip 		= "5060"
 username 		= id
@@ -44,6 +46,8 @@ def on_connect(client, userdata, flags, rc):
     print("LOG| Connected with result code "+str(rc))
     
     client.subscribe(f"stop/{id}")
+    client.subscribe(f"infus/{id}")
+    client.subscribe(f"bed/{id}")
     client.subscribe(f"assist/{id}")
 
 # The callback for when a PUBLISH message is received from the server.
@@ -81,9 +85,9 @@ def checkWifiConnection():
     while "wlan0" not in res:
         res = execute("nmcli con show")
     
-    execute(f"gpio write {led_1} 0")
+    execute(f"gpio write {led_cancel} 0")
     time.sleep(1)
-    execute(f"gpio write {led_1} 1")
+    execute(f"gpio write {led_cancel} 1")
     print("LOG| WIFI CONNECTED")
 
 def checkServer():
@@ -91,9 +95,9 @@ def checkServer():
     while "1 received" not in res:
         res = execute(f"ping -c 1 {host}")
         
-    execute(f"gpio write {led_1} 0")
+    execute(f"gpio write {led_cancel} 0")
     time.sleep(0.5)
-    execute(f"gpio write {led_1} 1")
+    execute(f"gpio write {led_cancel} 1")
     print("LOG| SERVER ONLINE")
 
 def setupGPIO():
@@ -101,8 +105,12 @@ def setupGPIO():
     execute(f"gpio mode {btn_cancel} in")
     execute(f"gpio mode {btn_emergency} in")
     execute(f"gpio mode {btn_infus} in")
-    execute(f"gpio mode {led_1} out")
-    execute(f"gpio write {led_1} 1")
+    execute(f"gpio mode {led_cancel} out")
+    execute(f"gpio mode {led_infus} out")
+    execute(f"gpio mode {led_emergency} out")
+    execute(f"gpio write {led_cancel} 1")
+    execute(f"gpio write {led_infus} 1")
+    execute(f"gpio write {led_emergency} 1")
     print("LOG| SETUP GPIO SUCCESSFULL")
     
 def setupLinphone():
@@ -112,12 +120,12 @@ def setupLinphone():
     res = execute("linphonecsh status register")
     before_linphone = millis()
     while "registered," not in res:
-        execute(f"gpio write {led_1} 0")
+        execute(f"gpio write {led_cancel} 0")
         execute("linphonecsh init")
         execute(f"linphonecsh register --host {host} --username {username} --password {password}")
         res = execute("linphonecsh status register")
         time.sleep(0.1)
-        execute(f"gpio write {led_1} 1")
+        execute(f"gpio write {led_cancel} 1")
         time.sleep(0.1)
         if millis() - before_linphone >60000:
             execute("reboot")
@@ -146,9 +154,9 @@ def checkTwoWay():
     return x['data'][0]['mode'], int(x['data'][0]['vol']), int(x['data'][0]['mic'])
 
 setupGPIO()
-execute(f"gpio write {led_1} 0")
+execute(f"gpio write {led_cancel} 0")
 time.sleep(0.5)
-execute(f"gpio write {led_1} 1")
+execute(f"gpio write {led_cancel} 1")
 time.sleep(10)
 checkWifiConnection()
 checkServer()
@@ -156,12 +164,12 @@ mode, vol, mic = checkTwoWay()
 client.connect(host, 1883, 60)
 client.loop_start()
 setupLinphone()
-execute(f"gpio write {led_1} 1")
+execute(f"gpio write {led_cancel} 1")
 print("MULAI")
 time.sleep(10)
-execute(f"gpio write {led_1} 0")
+execute(f"gpio write {led_cancel} 0")
 time.sleep(1)
-execute(f"gpio write {led_1} 1")
+execute(f"gpio write {led_cancel} 1")
 
 
 before_call_lock = millis()
@@ -197,14 +205,45 @@ while True:
         call_lock = False
 
     
+    if '0' in execute(f"gpio read {btn_infus}"):
+        infus_lock = True
+        before_infus_lock = millis()
+        
+        
+    hasil_infus_lock = millis() - before_infus_lock
+    if infus_lock and ('1' in execute(f"gpio read {btn_infus}"))  and hasil_infus_lock > 200:
+        client.publish(f"infus/{id}", payload="i", qos=1, retain=True)
+        after_calling.set()
+        print("LOG| btn infus clicked")
+        before_infus_lock = millis()
+        infus_lock = False
+
+    
+    if '0' in execute(f"gpio read {btn_emergency}"):
+        emergency_lock = True
+        before_emergency_lock = millis()
+        
+        
+    hasil_emergency_lock = millis() - before_emergency_lock
+    if emergency_lock and ('1' in execute(f"gpio read {btn_emergency}"))  and hasil_emergency_lock > 200:
+        client.publish(f"bed/{id}", payload="e", qos=1, retain=True)
+        after_calling.set()
+        print("LOG| btn emergency clicked")
+        before_emergency_lock = millis()
+        emergency_lock = False
+
+    
     if '0' in execute(f"gpio read {btn_cancel}"):
         cancel_lock = True
         before_cancel_lock = millis()
+
         
     hasil_cancel_lock = millis() - before_cancel_lock
     if cancel_lock and ('1' in execute(f"gpio read {btn_cancel}"))  and hasil_cancel_lock > 200:
         client.publish(f"call/{id}", payload="c", qos=1, retain=True)
         client.publish(f"stop/{id}", payload="c", qos=1, retain=True)
+        client.publish(f"infus/{id}", payload="c", qos=1, retain=True)
+        client.publish(f"bed/{id}", payload="c", qos=1, retain=True)
         after_calling.clear()
         calling.clear()
         print("LOG| btn cancel clicked")
@@ -233,9 +272,9 @@ while True:
     
     if after_calling.is_set() :
         if millis() - before_calling > 1000:
-            execute(f"gpio write {led_1} 0")
+            execute(f"gpio write {led_cancel} 0")
             time.sleep(0.2)
-            execute(f"gpio write {led_1} 1")
+            execute(f"gpio write {led_cancel} 1")
             before_calling = millis()
     
     if millis() - send_activation > 5000:
