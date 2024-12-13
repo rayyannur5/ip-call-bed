@@ -22,13 +22,14 @@ id_r.close()
 if id == "":
     exit()
 
-btn_call 		= 25
-btn_cancel 		= 7
-btn_emergency 	= 0
-btn_infus 		= 2
-led_cancel		= 8
-led_emergency	= 1
-led_infus		= 5
+btn_call 		= 22
+btn_cancel 		= 2
+btn_emergency 	= 6
+btn_infus 		= 0
+led_cancel		= 20
+led_emergency	= 3
+led_infus		= 4
+pin_relay		= 23
 buzzer			= 17
 host 			= "192.168.0.1"
 port_sip 		= "5060"
@@ -68,14 +69,12 @@ def on_message(client, userdata, msg):
 #     else :
 #         first_on.set()
     
-    
+def execute(command):
+    return subprocess.run(command, capture_output=True, shell=True).stdout.decode()
 
 client = mqtt.Client()
 client.on_connect = on_connect
 client.on_message = on_message
-
-def execute(command):
-    return subprocess.run(command, capture_output=True, shell=True).stdout.decode()
 
 def millis():
     return round(time.time() * 1000)
@@ -108,9 +107,11 @@ def setupGPIO():
     execute(f"gpio mode {led_cancel} out")
     execute(f"gpio mode {led_infus} out")
     execute(f"gpio mode {led_emergency} out")
+    execute(f"gpio mode {pin_relay} out")
     execute(f"gpio write {led_cancel} 1")
     execute(f"gpio write {led_infus} 1")
     execute(f"gpio write {led_emergency} 1")
+    execute(f"gpio write {pin_relay} 0")
     print("LOG| SETUP GPIO SUCCESSFULL")
     
 def setupLinphone():
@@ -198,6 +199,7 @@ while True:
     hasil_call_lock = millis() - before_call_lock
     if call_lock and ('1' in execute(f"gpio read {btn_call}"))  and hasil_call_lock > 200:
         execute("linphonecsh generic terminate")
+        execute(f"gpio write {pin_relay} 1")
         client.publish(f"call/{id}", payload="1", qos=1, retain=True)
         calling.set()
         print("LOG| btn call clicked")
@@ -260,8 +262,13 @@ while True:
     elif "hook=answered" in res:
         execute(f"amixer set Capture {mic}%")
         oncall = True
+        execute(f"gpio write {pin_relay} 1")
         calling.clear()
     else:
+        if calling.is_set():
+            execute(f"gpio write {pin_relay} 1")
+        else:
+            execute(f"gpio write {pin_relay} 0")
         oncall = False
 
 
@@ -271,6 +278,7 @@ while True:
             before_calling = millis()
     
     if after_calling.is_set() :
+        execute(f"gpio write {pin_relay} 0")
         if millis() - before_calling > 1000:
             execute(f"gpio write {led_cancel} 0")
             time.sleep(0.2)

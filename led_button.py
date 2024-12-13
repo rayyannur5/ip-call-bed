@@ -59,6 +59,9 @@ while True :
         execute(f"gpio write {led_emergency} 1")
 
     if millis() - before_3_menit > 180000:
-        x = requests.get(f'http://{host}/ip-call/server/bed/get_one.php?id={id}').json()
-        execute(f"amixer set Master {x['data'][0]['vol']}%")
+        try :   
+            x = requests.get(f'http://{host}/ip-call/server/bed/get_one.php?id={id}').json()
+            execute(f"amixer set Master {x['data'][0]['vol']}%")
+        except :
+            pass
         before_3_menit = millis()
