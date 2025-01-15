@@ -7,11 +7,16 @@ app = Flask(__name__)
 def home():
     if request.method == 'POST':
         id = request.form.get('id')
+        nursestation = request.form.get('nursestation')
         ssid = request.form.get('ssid')
         pswd = request.form.get('pswd')
         
         f = open("/home/nursecall/ip-call-bed/config/id.txt", "w")
         f.write(id)
+        f.close()
+
+        f = open("/home/nursecall/ip-call-bed/config/nursestation.txt", "w")
+        f.write(nursestation)
         f.close()
         
         f = open("/home/nursecall/ip-call-bed/config/ssid.txt", "w")
@@ -25,17 +30,20 @@ def home():
         return redirect('/')
     
     ssid = open("/home/nursecall/ip-call-bed/config/ssid.txt", "r")
+    nursestation = open("/home/nursecall/ip-call-bed/config/nursestation.txt", "r")
     pswd = open("/home/nursecall/ip-call-bed/config/pass.txt", "r")
     id_r = open("/home/nursecall/ip-call-bed/config/id.txt", "r")
     _ssid = ssid.read()
+    _nursestation = nursestation.read()
     _pswd = pswd.read()
     _id_r = id_r.read()
     
     ssid.close()
+    nursestation.close()
     pswd.close()
     id_r.close()
     
-    return render_template('index.html', id=_id_r, ssid=_ssid, pswd=_pswd)
+    return render_template('index.html', id=_id_r, ssid=_ssid, pswd=_pswd, nursestation=_nursestation)
 
 @app.route('/reboot')
 def reboot():

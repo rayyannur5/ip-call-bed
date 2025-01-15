@@ -4,23 +4,109 @@ import paho.mqtt.client as mqtt
 from threading import Event
 import wifimangement_linux as wifi
 import requests
+import re
 
 calling = Event()
 after_calling = Event()
 
-ssid = open("/home/nursecall/ip-call-bed/config/ssid.txt", "r")
-pswd = open("/home/nursecall/ip-call-bed/config/pass.txt", "r")
+list_nursestation = {
+    '1': [
+        "IPCallServer",
+        "IPCallServer2",
+        "IPCallServer3",
+        "IPCallServer4",
+        "IPCallServer5",
+        "IPCallServer6",
+        "IPCallServer7",
+        "IPCallServer8",
+        "IPCallServer9",
+        "IPCallServer10",
+    ],
+    '2': [
+        "IPCallServer11",
+        "IPCallServer12",
+        "IPCallServer13",
+        "IPCallServer14",
+        "IPCallServer15",
+        "IPCallServer16",
+        "IPCallServer17",
+        "IPCallServer18",
+        "IPCallServer19",
+        "IPCallServer20",
+    ],
+    '3': [
+        "IPCallServer21",
+        "IPCallServer22",
+        "IPCallServer23",
+        "IPCallServer24",
+        "IPCallServer25",
+        "IPCallServer26",
+        "IPCallServer27",
+        "IPCallServer28",
+        "IPCallServer29",
+        "IPCallServer30",
+    ],
+    '4': [
+        "IPCallServer31",
+        "IPCallServer32",
+        "IPCallServer33",
+        "IPCallServer34",
+        "IPCallServer35",
+        "IPCallServer36",
+        "IPCallServer37",
+        "IPCallServer38",
+        "IPCallServer39",
+        "IPCallServer40",
+    ],
+}
+
+def execute(command):
+    return subprocess.run(command, capture_output=True, shell=True).stdout.decode()
+
+def scan_wifi():
+    try:
+        # Jalankan perintah `nmcli dev wifi`
+        execute("nmcli dev wifi rescan")
+        time.sleep(3)
+        execute("nmcli device disconnect wlan0")
+        time.sleep(3)
+        output = execute("nmcli -f SSID,BSSID,SIGNAL device wifi")
+
+        # Parsing output
+        wifi_list = []
+        for line in output.split("\n")[1:]:  # Lewati header
+            if line.strip():  # Abaikan baris kosong
+                parts = re.split(r'\s{2,}', line.strip())
+                if len(parts) >= 3:
+                    wifi_list.append({
+                        "SSID": parts[0].strip(),
+                        "BSSID": parts[1].strip(),
+                        "RSSI": parts[2].strip()
+                    })
+        return wifi_list
+
+    except FileNotFoundError:
+        print("Perintah nmcli tidak ditemukan. Pastikan NetworkManager terinstal.")
+    except Exception as e:
+        print(f"Terjadi kesalahan: {e}")
+
+ssid_r = open("/home/nursecall/ip-call-bed/config/ssid.txt", "r")
+nursetation_r = open("/home/nursecall/ip-call-bed/config/nursestation.txt", "r")
+pswd_r = open("/home/nursecall/ip-call-bed/config/pass.txt", "r")
 id_r = open("/home/nursecall/ip-call-bed/config/id.txt", "r")
 
-wifi.connect(ssid.read(),pswd.read())
-ssid.close()
-pswd.close()
-
 id 				= id_r.read()
-id_r.close()
+nursestation    = nursetation_r.read()
+ssid            = ssid_r.read()
+pswd            = pswd_r.read()
 
 if id == "":
     exit()
+
+id_r.close()
+nursetation_r.close()
+ssid_r.close()
+pswd_r.close()
 
 btn_call 		= 22
 btn_cancel 		= 2
@@ -41,6 +127,34 @@ btn_session 	= None
 oncall			= False
 vol				= 100
 mic				= 100
+
+# mode autoconnect
+if nursestation != "":
+    wifi_networks = scan_wifi()
+    
+    max_signal = 0
+
+    nursestation_wifi_list = list_nursestation[nursestation]
+
+    if wifi_networks:
+        for i, network in enumerate(wifi_networks, start=1):
+            
+            _ssid = network['SSID']
+            _rssi = int(network['RSSI'])
+            
+            for item in nursestation_wifi_list:
+                if _ssid == item:
+                    print(f"{_ssid}\t{_rssi}")
+                    if max_signal < _rssi:
+                        ssid = _ssid
+                        max_signal = _rssi 
+        
+        print(ssid)
+        with open('/home/nursecall/ip-call-bed/config/ssid.txt', 'w') as file:
+            file.write(ssid)
+
+
+wifi.connect(ssid,pswd)
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -68,9 +182,6 @@ def on_message(client, userdata, msg):
 #         calling.clear()
 #     else :
 #         first_on.set()
-    
-def execute(command):
-    return subprocess.run(command, capture_output=True, shell=True).stdout.decode()
 
 client = mqtt.Client()
 client.on_connect = on_connect

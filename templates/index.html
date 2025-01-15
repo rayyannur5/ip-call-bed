@@ -13,6 +13,17 @@
         <label for="_id">ID</label>
         <input type="text" id="_id" name="id" value="{{ id }}"><br>
 
+        <label for="_nursesation">NURSESTATION</label>
+        <select id="_nursestation" name="nursestation">
+          <option value="">MANUAL SETTING</option>
+          <option value="1" {% if nursestation == "1" %}selected{% endif %}>1</option>
+          <option value="2" {% if nursestation == "2" %}selected{% endif %}>2</option>
+          <option value="3" {% if nursestation == "3" %}selected{% endif %}>3</option>
+          <option value="4" {% if nursestation == "4" %}selected{% endif %}>4</option>
+        </select>
+      
+        <br>
+
         <label for="_ssid">SSID</label>
         <input type="text" id="_ssid" name="ssid" value="{{ ssid }}"><br>
 

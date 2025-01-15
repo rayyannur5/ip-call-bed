@@ -37,6 +37,15 @@ input {
     box-sizing: border-box;
 }
 
+select {
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
 button {
     padding: 10px;
     border: none;
