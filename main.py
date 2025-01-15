@@ -62,10 +62,10 @@ def on_message(client, userdata, msg):
         after_calling.set()
     elif 'c' in str(msg.payload):
         after_calling.clear()
-        calling.clear()
+#         calling.clear()
     elif 'x' in str(msg.payload):
         after_calling.clear()
-        calling.clear()
+#         calling.clear()
 #     else :
 #         first_on.set()
     
@@ -186,6 +186,7 @@ before_emergency_lock = millis()
 emergency_lock = False
 
 before_calling = millis()
+before_after_calling = millis()
 
 send_activation = millis()
 
@@ -199,7 +200,6 @@ while True:
     hasil_call_lock = millis() - before_call_lock
     if call_lock and ('1' in execute(f"gpio read {btn_call}"))  and hasil_call_lock > 200:
         execute("linphonecsh generic terminate")
-        execute(f"gpio write {pin_relay} 1")
         client.publish(f"call/{id}", payload="1", qos=1, retain=True)
         calling.set()
         print("LOG| btn call clicked")
@@ -247,7 +247,7 @@ while True:
         client.publish(f"infus/{id}", payload="c", qos=1, retain=True)
         client.publish(f"bed/{id}", payload="c", qos=1, retain=True)
         after_calling.clear()
-        calling.clear()
+#         calling.clear()
         print("LOG| btn cancel clicked")
         before_cancel_lock = millis()
         cancel_lock = False
@@ -278,12 +278,11 @@ while True:
             before_calling = millis()
     
     if after_calling.is_set() :
-        execute(f"gpio write {pin_relay} 0")
-        if millis() - before_calling > 1000:
+        if millis() - before_after_calling > 1000:
             execute(f"gpio write {led_cancel} 0")
             time.sleep(0.2)
             execute(f"gpio write {led_cancel} 1")
-            before_calling = millis()
+            before_after_calling = millis()
     
     if millis() - send_activation > 5000:
         client.publish("aktif", payload=id, qos=0, retain=False)
