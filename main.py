@@ -5,9 +5,13 @@ from threading import Event
 import wifimangement_linux as wifi
 import requests
 import re
+import vlc
 
 calling = Event()
+playing = Event()
 after_calling = Event()
+reregister = Event()
+player = vlc.MediaPlayer()
 
 list_nursestation = {
     '1': [
@@ -59,6 +63,14 @@ list_nursestation = {
         "IPCallServer40",
     ],
 }
+
+def on_media_finished(event):
+    global playing
+    playing.clear()
+    print("lagu selesai")
+
+event_manager = player.event_manager()
+event_manager.event_attach(vlc.EventType.MediaPlayerEndReached, on_media_finished)
 
 def execute(command):
     return subprocess.run(command, capture_output=True, shell=True).stdout.decode()
@@ -164,27 +176,53 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(f"infus/{id}")
     client.subscribe(f"bed/{id}")
     client.subscribe(f"assist/{id}")
+    client.subscribe(id)
+    client.subscribe("schedule")
 
-# The callback for when a PUBLISH message is received from the server.
-# first_on = Event()
+def on_disconnect(client, userdata, rc):
+    if rc != 0:
+        print("Koneksi terputus secara tidak terduga! Mencoba menyambung ulang...")
+        while True:
+            try:
+                client.reconnect()  # Mencoba menyambung ulang
+                print("Berhasil menyambung ulang ke broker MQTT!")
+                break
+            except Exception as e:
+                print(f"Gagal menyambung ulang: {e}. Mencoba lagi dalam 5 detik...")
+                time.sleep(5)
+    else:
+        print("Koneksi terputus dengan sengaja.")
+
 def on_message(client, userdata, msg):
-#     if first_on.is_set() :
+    global player, playing
     print(msg.topic+" "+str(msg.payload))
-    if 's' in str(msg.payload):
+    
+    if msg.topic == 'schedule':
+        
+        audio_url = msg.payload.decode("utf-8")
+        player.set_media(vlc.Media(audio_url))
+        playing.set()
+        player.play()
+        
+    elif 's' in str(msg.payload):
         calling.clear()
+        playing.clear()
     elif 'm' in str(msg.payload):
         after_calling.set()
+        playing.clear()
     elif 'c' in str(msg.payload):
         after_calling.clear()
-#         calling.clear()
+        playing.clear()
     elif 'x' in str(msg.payload):
         after_calling.clear()
-#         calling.clear()
-#     else :
-#         first_on.set()
+        playing.clear()
+    elif 'r' in str(msg.payload):
+        reregister.set()
+
 
 client = mqtt.Client()
 client.on_connect = on_connect
+client.on_disconnect = on_disconnect
 client.on_message = on_message
 
 def millis():
@@ -254,6 +292,8 @@ def setupLinphone():
             res = execute(f"linphonecsh generic 'soundcard use {index_soundcard}'")
             print(f"LOG| {res}")
             break
+    
+    reregister.clear()
 
 def call(sip):
     res = execute(f"linphonecsh dial {sip}")
@@ -313,6 +353,7 @@ while True:
         execute("linphonecsh generic terminate")
         client.publish(f"call/{id}", payload="1", qos=1, retain=True)
         calling.set()
+        player.stop()
         print("LOG| btn call clicked")
         before_call_lock = millis()
         call_lock = False
@@ -375,12 +416,16 @@ while True:
         oncall = True
         execute(f"gpio write {pin_relay} 1")
         calling.clear()
+        player.stop()
     else:
         if calling.is_set():
+            execute(f"gpio write {pin_relay} 1")
+        elif playing.is_set():
             execute(f"gpio write {pin_relay} 1")
         else:
             execute(f"gpio write {pin_relay} 0")
         oncall = False
+        
 
 
     if calling.is_set() :
@@ -394,6 +439,10 @@ while True:
             time.sleep(0.2)
             execute(f"gpio write {led_cancel} 1")
             before_after_calling = millis()
+            
+    if reregister.is_set():
+        execute("linphonecsh unregister")
+        setupLinphone()
     
     if millis() - send_activation > 5000:
         client.publish("aktif", payload=id, qos=0, retain=False)
