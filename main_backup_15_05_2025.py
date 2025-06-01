@@ -6,6 +6,9 @@ import wifimangement_linux as wifi
 import requests
 import re
 import vlc
+from getmac import get_mac_address
+
+# SERIAL NUMBER VERSION
 
 calling = Event()
 playing = Event()
@@ -64,6 +67,13 @@ list_nursestation = {
     ],
 }
 
+def on_media_finished(event):
+    global playing
+    playing.clear()
+    print("lagu selesai")
+
+event_manager = player.event_manager()
+event_manager.event_attach(vlc.EventType.MediaPlayerEndReached, on_media_finished)
 
 def execute(command):
     return subprocess.run(command, capture_output=True, shell=True).stdout.decode()
@@ -99,20 +109,14 @@ ssid_r = open("/home/nursecall/ip-call-bed/config/ssid.txt", "r")
 nursetation_r = open("/home/nursecall/ip-call-bed/config/nursestation.txt", "r")
 pswd_r = open("/home/nursecall/ip-call-bed/config/pass.txt", "r")
 id_r = open("/home/nursecall/ip-call-bed/config/id.txt", "r")
-state_audio_r = open("/home/nursecall/ip-call-bed/config/audio.txt", "r")
 
+mac_address = get_mac_address('wlan0').replace(":", "")
 
-id 				= id_r.read()
+# id 				= id_r.read()
+id = "b" + mac_address
 nursestation    = nursetation_r.read()
 ssid            = ssid_r.read()
 pswd            = pswd_r.read()
-state_audio     = state_audio_r.read()
-state_btn_activity = False
-timer_after_activity = 60000
-timeout_time_activity = 60000
-
-if state_audio == '':
-    state_audio = '0'
 
 if id == "":
     exit()
@@ -131,7 +135,7 @@ led_emergency	= 3
 led_infus		= 4
 pin_relay		= 25
 buzzer			= 3
-host 			= "192.168.0.102"
+host 			= "192.168.0.1"
 port_sip 		= "5060"
 username 		= id
 password 		= id
@@ -141,34 +145,35 @@ btn_session 	= None
 oncall			= False
 vol				= 100
 mic				= 100
+id_server		= ""
 
 # mode autoconnect
-# if nursestation != "":
-#     wifi_networks = scan_wifi()
-#     
-#     max_signal = 0
-# 
-#     nursestation_wifi_list = list_nursestation[nursestation]
-# 
-#     if wifi_networks:
-#         for i, network in enumerate(wifi_networks, start=1):
-#             
-#             _ssid = network['SSID']
-#             _rssi = int(network['RSSI'])
-#             
-#             for item in nursestation_wifi_list:
-#                 if _ssid == item:
-#                     print(f"{_ssid}\t{_rssi}")
-#                     if max_signal < _rssi:
-#                         ssid = _ssid
-#                         max_signal = _rssi 
-#         
-#         print(ssid)
-#         with open('/home/nursecall/ip-call-bed/config/ssid.txt', 'w') as file:
-#             file.write(ssid)
-# 
-# 
-# wifi.connect(ssid,pswd)
+if nursestation != "":
+    wifi_networks = scan_wifi()
+    
+    max_signal = 0
+
+    nursestation_wifi_list = list_nursestation[nursestation]
+
+    if wifi_networks:
+        for i, network in enumerate(wifi_networks, start=1):
+            
+            _ssid = network['SSID']
+            _rssi = int(network['RSSI'])
+            
+            for item in nursestation_wifi_list:
+                if _ssid == item:
+                    print(f"{_ssid}\t{_rssi}")
+                    if max_signal < _rssi:
+                        ssid = _ssid
+                        max_signal = _rssi 
+        
+        print(ssid)
+        with open('/home/nursecall/ip-call-bed/config/ssid.txt', 'w') as file:
+            file.write(ssid)
+
+
+wifi.connect(ssid,pswd)
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -180,7 +185,7 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(f"assist/{id}")
     client.subscribe(f"serial/{id}")
     client.subscribe(id)
-    client.subscribe("schedule_audio")
+    client.subscribe("schedule")
 
 def on_disconnect(client, userdata, rc):
     if rc != 0:
@@ -201,29 +206,28 @@ def on_disconnect(client, userdata, rc):
         print("Koneksi terputus dengan sengaja.")
 
 def on_message(client, userdata, msg):
-    global playing, state_btn_activity, player
-    
+    global player, playing
     print(msg.topic+" "+str(msg.payload))
     
-    if msg.topic == 'schedule_audio':
+    if msg.topic == 'schedule':
         
-        if '1' in str(msg.payload):
-            playing.set()
-        elif '0' in str(msg.payload):
-            player.stop()
-            playing.clear()
+        audio_url = msg.payload.decode("utf-8")
+        player.set_media(vlc.Media(audio_url))
+        playing.set()
+        player.play()
         
     elif 's' in str(msg.payload):
         calling.clear()
+        playing.clear()
     elif 'm' in str(msg.payload):
         after_calling.set()
+        playing.clear()
     elif 'c' in str(msg.payload):
         after_calling.clear()
+        playing.clear()
     elif 'x' in str(msg.payload):
         after_calling.clear()
-        state_btn_activity = False
-        
-    # serial number version
+        playing.clear()
     elif 'serial' in msg.topic and 'r' in str(msg.payload):
         print("reboot")
         execute("reboot")
@@ -237,8 +241,6 @@ def on_message(client, userdata, msg):
         execute(f"gpio write {led_cancel} 0")
         time.sleep(1)
         execute(f"gpio write {led_cancel} 1")
-    
-    # reregister
     elif 'r' in str(msg.payload):
         reregister.set()
 
@@ -297,15 +299,17 @@ def setupGPIO():
     print("LOG| SETUP GPIO SUCCESSFULL")
     
 def setupLinphone():
+    if id_server == "":
+        return
     execute("linphonecsh init")
     print("LOG| LINPHONE REGISTERING")
-    execute(f"linphonecsh register --host {host} --username {id} --password {id}")
+    execute(f"linphonecsh register --host {host} --username {id_server} --password {id_server}")
     res = execute("linphonecsh status register")
     before_linphone = millis()
     while "registered," not in res:
         execute(f"gpio write {led_cancel} 0")
         execute("linphonecsh init")
-        execute(f"linphonecsh register --host {host} --username {id} --password {id}")
+        execute(f"linphonecsh register --host {host} --username {id_server} --password {id_server}")
         res = execute("linphonecsh status register")
         time.sleep(0.1)
         execute(f"gpio write {led_cancel} 1")
@@ -336,10 +340,14 @@ def call(sip):
     print(f"LOG| {res}")
 
 def checkTwoWay():
+    global id_server
     try:
         requests.get(f"http://{host}/ip-call/server/bed/set_ip.php?id={id}&ip={wifi.ip()}")
         x = requests.get(f"http://{host}/ip-call/server/bed/get_one.php?id={id}").json()
+        print(x)
         if len(x['data']) > 0:
+            id_server = x['data'][0]['id']
+            print(id_server)
             execute(f"amixer set Master {x['data'][0]['vol']}%")
             return x['data'][0]['mode'], int(x['data'][0]['vol']), int(x['data'][0]['mic'])
         else:
@@ -384,13 +392,6 @@ before_after_calling = millis()
 send_activation = millis()
 
 while True:
-    
-    if player.is_playing() == 0 and (millis() - timer_after_activity > timeout_time_activity) and oncall == False and state_audio == '1' and playing.is_set():
-        print("play audio")
-        player.set_media(vlc.Media("http://192.168.0.102:8000/stream.mp3"))
-        player.play()
-        time.sleep(0.5)
-    
     if '0' in execute(f"gpio read {btn_call}"):
         if not oncall and not after_calling.is_set():
             call_lock = True
@@ -403,10 +404,7 @@ while True:
         execute("linphonecsh generic terminate")
         client.publish(f"call/{id}", payload="1", qos=1, retain=True)
         calling.set()
-        
-        state_btn_activity = True
         player.stop()
-        
         execute(f"gpio write {buzzer} 1")
         print("LOG| btn call clicked")
         before_call_lock = millis()
@@ -425,10 +423,6 @@ while True:
         after_calling.set()
         execute(f"gpio write {buzzer} 1")
         print("LOG| btn infus clicked")
-        
-        state_btn_activity = True
-        player.stop()
-        
         before_infus_lock = millis()
         infus_lock = False
     
@@ -444,12 +438,10 @@ while True:
         after_calling.set()
         execute(f"gpio write {buzzer} 1")
         print("LOG| btn emergency clicked")
-        state_btn_activity = True
-        player.stop()
         before_emergency_lock = millis()
         emergency_lock = False
     
-    if '0' in execute(f"gpio read {btn_cancel}") and cancel_lock == False:
+    if '0' in execute(f"gpio read {btn_cancel}"):
         cancel_lock = True
         execute(f"gpio write {buzzer} 0")
         before_cancel_lock = millis()
@@ -463,35 +455,10 @@ while True:
         client.publish(f"bed/{id}", payload="c", qos=1, retain=True)
         after_calling.clear()
 #         calling.clear()
-
-        state_btn_activity = False
-
         execute(f"gpio write {buzzer} 1")
         print("LOG| btn cancel clicked")
         before_cancel_lock = millis()
         cancel_lock = False
-    
-    if cancel_lock and hasil_cancel_lock > 10000:
-        execute(f"gpio write {buzzer} 0")
-        time.sleep(0.1)
-        execute(f"gpio write {buzzer} 1")
-        time.sleep(0.1)
-        execute(f"gpio write {buzzer} 0")
-        time.sleep(0.1)
-        execute(f"gpio write {buzzer} 1")
-        cancel_lock = False
-        
-        while '0' in execute(f"gpio read {btn_cancel}"):
-            pass
-        
-        if state_audio == '1':
-            state_audio = '0'
-            player.stop()
-        else :
-            state_audio = '1'
-        f = open("/home/nursecall/ip-call-bed/config/audio.txt", "w")
-        f.write(state_audio)
-        f.close()
 
         
     res = execute("linphonecsh status hook")
@@ -510,14 +477,10 @@ while True:
     else:
         if calling.is_set():
             execute(f"gpio write {pin_relay} 0")
+        elif playing.is_set():
+            execute(f"gpio write {pin_relay} 0")
         else:
-            if state_audio == '1':
-                if playing.is_set():
-                    execute(f"gpio write {pin_relay} 0")
-                else:
-                    execute(f"gpio write {pin_relay} 1")
-            else:
-                execute(f"gpio write {pin_relay} 1")
+            execute(f"gpio write {pin_relay} 1")
         oncall = False
         
 
@@ -537,10 +500,6 @@ while True:
     if reregister.is_set():
         execute("linphonecsh unregister")
         setupLinphone()
-        
-    if state_btn_activity:
-        # jadi 
-        timer_after_activity = millis()
     
     if millis() - send_activation > 5000:
         client.publish("aktif", payload=id, qos=0, retain=False)
@@ -552,14 +511,5 @@ while True:
 #         client.subscribe(f"serial/{id}")
 #         client.subscribe(id)
 #         client.subscribe("schedule")
-
-        try:
-            x = requests.get(f"http://{host}/ip-call/server/bed/get_one.php?id={id}").json()
-            if len(x['data']) > 0:
-                execute(f"amixer set Master {x['data'][0]['vol']}%")
-                mic = x['data'][0]['mic']
-                timeout_time_activity = int(x['data'][0]['timeout'])
-        except:
-            pass
             
         send_activation = millis()
