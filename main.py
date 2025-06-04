@@ -131,7 +131,7 @@ led_emergency	= 3
 led_infus		= 4
 pin_relay		= 25
 buzzer			= 3
-host 			= "192.168.0.102"
+host 			= "192.168.0.1"
 port_sip 		= "5060"
 username 		= id
 password 		= id
@@ -141,6 +141,8 @@ btn_session 	= None
 oncall			= False
 vol				= 100
 mic				= 100
+
+timer_ping		= 0
 
 # mode autoconnect
 # if nursestation != "":
@@ -168,7 +170,7 @@ mic				= 100
 #             file.write(ssid)
 # 
 # 
-# wifi.connect(ssid,pswd)
+wifi.connect(ssid,pswd)
 
 # The callback for when the client receives a CONNACK response from the server.
 def on_connect(client, userdata, flags, rc):
@@ -181,6 +183,7 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(f"serial/{id}")
     client.subscribe(id)
     client.subscribe("schedule_audio")
+    client.subscribe("ping")
 
 def on_disconnect(client, userdata, rc):
     if rc != 0:
@@ -201,11 +204,11 @@ def on_disconnect(client, userdata, rc):
         print("Koneksi terputus dengan sengaja.")
 
 def on_message(client, userdata, msg):
-    global playing, state_btn_activity, player
+    global playing, state_btn_activity, player, timer_ping, timer_after_activity, timeout_time_activity
     
     print(msg.topic+" "+str(msg.payload))
     
-    if msg.topic == 'schedule_audio':
+    if msg.topic == 'schedule_audio' and not state_btn_activity and (millis() - timer_after_activity > timeout_time_activity):
         
         if '1' in str(msg.payload):
             playing.set()
@@ -241,6 +244,11 @@ def on_message(client, userdata, msg):
     # reregister
     elif 'r' in str(msg.payload):
         reregister.set()
+        
+    # ping by server
+    if msg.topic == 'ping':
+        timer_ping = millis()
+        
 
 
 client = mqtt.Client()
@@ -382,12 +390,13 @@ before_calling = millis()
 before_after_calling = millis()
 
 send_activation = millis()
+timer_ping = millis()
 
 while True:
     
     if player.is_playing() == 0 and (millis() - timer_after_activity > timeout_time_activity) and oncall == False and state_audio == '1' and playing.is_set():
         print("play audio")
-        player.set_media(vlc.Media("http://192.168.0.102:8000/stream.mp3"))
+        player.set_media(vlc.Media(f"http://{host}:8000/stream.mp3"))
         player.play()
         time.sleep(0.5)
     
@@ -406,6 +415,7 @@ while True:
         
         state_btn_activity = True
         player.stop()
+        playing.clear()
         
         execute(f"gpio write {buzzer} 1")
         print("LOG| btn call clicked")
@@ -428,6 +438,7 @@ while True:
         
         state_btn_activity = True
         player.stop()
+        playing.clear()
         
         before_infus_lock = millis()
         infus_lock = False
@@ -446,6 +457,7 @@ while True:
         print("LOG| btn emergency clicked")
         state_btn_activity = True
         player.stop()
+        playing.clear()
         before_emergency_lock = millis()
         emergency_lock = False
     
@@ -542,16 +554,13 @@ while True:
         # jadi 
         timer_after_activity = millis()
     
+    if millis() - timer_ping > 120000:
+        print("REBOOT BY PING")
+        execute("reboot")
+    
     if millis() - send_activation > 5000:
         client.publish("aktif", payload=id, qos=0, retain=False)
         
-#         client.subscribe(f"stop/{id}")
-#         client.subscribe(f"infus/{id}")
-#         client.subscribe(f"bed/{id}")
-#         client.subscribe(f"assist/{id}")
-#         client.subscribe(f"serial/{id}")
-#         client.subscribe(id)
-#         client.subscribe("schedule")
 
         try:
             x = requests.get(f"http://{host}/ip-call/server/bed/get_one.php?id={id}").json()
