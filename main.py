@@ -1,6 +1,7 @@
 import subprocess
 import time
 import paho.mqtt.client as mqtt
+import threading
 from threading import Event
 import wifimangement_linux as wifi
 import requests
@@ -109,7 +110,7 @@ try:
 except FileNotFoundError as e:
     log_print(f"Error: File konfigurasi tidak ditemukan - {e}"); exit()
 
-if not id: log_print("Error: ID perangkat kosong."); exit()
+if not id: log_print("Error: ID perangkat kosong.")
 if state_audio == '': state_audio = '0'
 
 # --- Hardware & Network Constants ---
@@ -122,7 +123,7 @@ state_btn_activity, timer_after_activity, timeout_time_activity = False, 60000, 
 timer_ping, send_activation = 0, 0
 before_calling, before_after_calling = 0, 0
 x_server_emergency, x_server_call, x_server_infus = 0,0,0
-mode_ap, mode_ap_timer = False, 0
+mode_ap = False
 
 # --- MQTT Callbacks ---
 def on_connect(client, userdata, flags, rc):
@@ -222,13 +223,21 @@ def get_settings():
         log_print(f"Gagal memproses pengaturan dari server: {e}")
 
 def setupLinphone():
+
+    global mode_ap
+
+    if mode_ap:
+        return
+
     log_print("Inisialisasi & Registrasi Linphone...")
     execute("linphonecsh init")
     execute(f"linphonecsh register --host {host} --username {username} --password {password}")
     timeout = millis() + 60000
     while "registered" not in execute("linphonecsh status register"):
+        execute(f"gpio write {led_cancel} 0");
         if millis() > timeout: log_print("Gagal registrasi Linphone, reboot."); execute("reboot")
         execute("linphonecsh iterate"); time.sleep(1)
+        execute(f"gpio write {led_cancel} 1");
     log_print("Linphone terdaftar.")
     log_print("Mencari soundcard 'echo'...")
     soundcard_list = execute("linphonecsh generic 'soundcard list'")
@@ -269,6 +278,10 @@ def setup_network_upsert(ssid: str, pswd: str, static_ip: str = None):
     Fungsi cerdas untuk setup jaringan: Membuat profil jika belum ada, atau
     MEMPERBARUI jika konfigurasi IP berubah. Fallback ke DHCP jika static_ip kosong.
     """
+
+    if ssid == '':
+        return
+
     log_print("Memulai penyiapan jaringan (mode Create/Update)...")
     con_name = f"{ssid}-static"
     ifname = "wlan0"
@@ -343,17 +356,42 @@ def setup_network_upsert(ssid: str, pswd: str, static_ip: str = None):
         else:
             log_print(f"PERINGATAN: Gagal mengaktifkan koneksi WiFi. Mungkin sudah aktif atau sinyal lemah. Pesan: {up_result}")
 
+def setup_thread_worker():
+    """
+    Thread terpisah yang khusus menangani tombol setup dan logika mode AP.
+    Ini membuat loop utama lebih bersih.
+    """
+    global mode_ap # Gunakan keyword global untuk mengubah variabel di scope utama
+    log_print("Thread setup dimulai dan siap memantau tombol setup.")
+    
+    # Timer untuk blinking buzzer saat mode AP aktif, sekarang lokal di thread ini
+    mode_ap_timer = 0 
+
+    while True:
+        # 1. Periksa tombol setup
+        # Tambahkan 'and not mode_ap' agar tidak terus menerus mengaktifkan jika sudah aktif
+        if setup_button.check() == "short_press" and not mode_ap:
+            log_print('Mode AP diaktifkan via thread.')
+            mode_ap = True
+            execute("nmcli connection up Hotspot")
+            mode_ap_timer = millis() # Reset timer saat mode AP pertama kali aktif
+
+        # 2. Logika yang berjalan HANYA saat mode AP aktif (dipindahkan dari loop utama)
+        if mode_ap:
+            if millis() - mode_ap_timer > 2000:
+                # Beri sinyal visual/audio bahwa mode AP sedang berjalan
+                execute(f"gpio write {buzzer} 0"); time.sleep(0.3)
+                execute(f"gpio write {buzzer} 1"); time.sleep(0.3)
+                execute(f"gpio write {buzzer} 0"); time.sleep(0.3)
+                execute(f"gpio write {buzzer} 1")
+                mode_ap_timer = millis() # Reset timer untuk blink berikutnya
+    
 # --- Main Program ---
 # 1. Inisialisasi Awal
 setupGPIO()
-log_print("Sistem dimulai..."); time.sleep(5)
+
 # wifi.connect(ssid, pswd)
 setup_network_upsert(ssid, pswd, static_ip)
-
-check_connection("WiFi", "nmcli con show", "wlan0")
-check_connection("Server", f"ping -c 1 {host}", "1 received")
-set_ip()
-get_settings()
 
 # 2. Inisialisasi Tombol
 call_button = Button(btn_call)
@@ -361,6 +399,18 @@ infus_button = Button(btn_infus)
 emergency_button = Button(btn_emergency)
 cancel_button = Button(btn_cancel, long_press_ms=10000)
 setup_button = Button(btn_setup, debounce_ms=10)
+
+log_print("Sistem dimulai..."); time.sleep(5)
+
+#btn_setup
+setup_handler_thread = threading.Thread(target=setup_thread_worker, daemon=True)
+setup_handler_thread.start() # Jalankan thread!
+
+check_connection("WiFi", "nmcli con show", "wlan0")
+check_connection("Server", f"ping -c 1 {host}", "1 received")
+set_ip()
+get_settings()
+
 
 # 3. Koneksi MQTT & Linphone
 client = mqtt.Client(client_id=f"bed-device-{id}")
@@ -409,19 +459,6 @@ while True:
         log_print(f"Status Audio diubah menjadi: {'AKTIF' if state_audio == '1' else 'NONAKTIF'}")
         if state_audio == '0': player.stop()
         with open("/home/nursecall/ip-call-bed/config/audio.txt", "w") as f: f.write(state_audio)
-
-    if setup_button.check() == "short_press":
-        log_print('mode ap started')
-        mode_ap = True
-        execute("nmcli connection up Hotspot")
-
-    if mode_ap:
-        if millis() - mode_ap_timer > 2000:
-            execute(f"gpio write {buzzer} 0"); time.sleep(0.5)
-            execute(f"gpio write {buzzer} 1"); time.sleep(0.5)
-            execute(f"gpio write {buzzer} 0"); time.sleep(0.5)
-            execute(f"gpio write {buzzer} 1")
-            mode_ap_timer = millis()
 
     # Logika status panggilan & audio
     res = execute("linphonecsh status hook")
