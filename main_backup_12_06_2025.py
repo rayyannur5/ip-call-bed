@@ -35,13 +35,14 @@ class Button:
     Class untuk menangani logika debounce dan deteksi penekanan tombol (pendek & lama).
     Logika diperbaiki untuk memastikan long press dan buzzer berfungsi dengan benar.
     """
-    def __init__(self, pin, debounce_ms=100, long_press_ms=None):
+    def __init__(self, pin, debounce_ms=200, long_press_ms=None):
         self.pin = pin
         self.debounce_ms = debounce_ms
         self.long_press_ms = long_press_ms
         # Status internal
         self._is_pressed = False
         self._press_start_time = 0
+        self._buzzer_on = False
         self._long_press_fired = False
         execute(f"gpio mode {self.pin} in")
 
@@ -59,14 +60,17 @@ class Button:
             press_duration = millis() - self._press_start_time
 
             # Nyalakan buzzer jika debounce terlewati
-            if press_duration >= self.debounce_ms:
+            if not self._buzzer_on and press_duration > self.debounce_ms:
+                self._buzzer_on = True
                 execute(f"gpio write {buzzer} 0")
 
             # Periksa event long press (hanya jika ada dan belum terpicu)
             if self.long_press_ms and not self._long_press_fired and press_duration > self.long_press_ms:
                 self._long_press_fired = True # Tandai bahwa long press sudah terjadi
                 
-                execute(f"gpio write {buzzer} 1")
+                # Matikan buzzer normal jika menyala
+                if self._buzzer_on:
+                    execute(f"gpio write {buzzer} 1")
 
                  # Beri umpan balik khusus untuk long press
                 execute(f"gpio write {buzzer} 0"); time.sleep(0.1)
@@ -86,10 +90,12 @@ class Button:
                 
                 # Reset semua status
                 self._is_pressed = False
-                execute(f"gpio write {buzzer} 1")
+                if self._buzzer_on:
+                    self._buzzer_on = False
+                    execute(f"gpio write {buzzer} 1")
                 
                 # Periksa apakah ini short press yang valid
-                if not self._long_press_fired and press_duration > self.debounce_ms + 50:
+                if not self._long_press_fired and press_duration > self.debounce_ms:
                     return "short_press"
         
         return None
@@ -113,7 +119,7 @@ if not id: log_print("Error: ID perangkat kosong."); exit()
 if state_audio == '': state_audio = '0'
 
 # --- Hardware & Network Constants ---
-btn_call, btn_cancel, btn_emergency, btn_infus, btn_setup = 23, 22, 6, 2, 19
+btn_call, btn_cancel, btn_emergency, btn_infus = 23, 22, 6, 2
 led_cancel, led_emergency, led_infus = 20, 3, 4
 pin_relay, buzzer, host = 25, 3, "192.168.0.1"
 username, password = id, id
@@ -122,7 +128,6 @@ state_btn_activity, timer_after_activity, timeout_time_activity = False, 60000, 
 timer_ping, send_activation = 0, 0
 before_calling, before_after_calling = 0, 0
 x_server_emergency, x_server_call, x_server_infus = 0,0,0
-mode_ap, mode_ap_timer = False, 0
 
 # --- MQTT Callbacks ---
 def on_connect(client, userdata, flags, rc):
@@ -132,8 +137,7 @@ def on_connect(client, userdata, flags, rc):
                       ("schedule_audio", 1), ("ping", 1)])
 
 def on_disconnect(client, userdata, rc):
-    global mode_ap
-    if rc != 0 and mode_ap == False:
+    if rc != 0:
         log_print("Koneksi MQTT terputus! Mencoba menyambung kembali...")
         start_timer = millis()
         while True:
@@ -360,7 +364,6 @@ call_button = Button(btn_call)
 infus_button = Button(btn_infus)
 emergency_button = Button(btn_emergency)
 cancel_button = Button(btn_cancel, long_press_ms=10000)
-setup_button = Button(btn_setup, debounce_ms=10)
 
 # 3. Koneksi MQTT & Linphone
 client = mqtt.Client(client_id=f"bed-device-{id}")
@@ -405,23 +408,13 @@ while True:
 
     if cancel_button_state == "long_press":
 
+
+        log_print("masuk sini")
+
         state_audio = '0' if state_audio == '1' else '1'
         log_print(f"Status Audio diubah menjadi: {'AKTIF' if state_audio == '1' else 'NONAKTIF'}")
         if state_audio == '0': player.stop()
         with open("/home/nursecall/ip-call-bed/config/audio.txt", "w") as f: f.write(state_audio)
-
-    if setup_button.check() == "short_press":
-        log_print('mode ap started')
-        mode_ap = True
-        execute("nmcli connection up Hotspot")
-
-    if mode_ap:
-        if millis() - mode_ap_timer > 2000:
-            execute(f"gpio write {buzzer} 0"); time.sleep(0.5)
-            execute(f"gpio write {buzzer} 1"); time.sleep(0.5)
-            execute(f"gpio write {buzzer} 0"); time.sleep(0.5)
-            execute(f"gpio write {buzzer} 1")
-            mode_ap_timer = millis()
 
     # Logika status panggilan & audio
     res = execute("linphonecsh status hook")
@@ -458,7 +451,7 @@ while True:
     # Tugas periodik
     if reregister.is_set(): setupLinphone()
     if state_btn_activity: timer_after_activity = millis()
-    if millis() - timer_ping > 120000 and mode_ap == False: log_print("Ping timeout, reboot."); execute("reboot")
+    if millis() - timer_ping > 120000: log_print("Ping timeout, reboot."); execute("reboot")
     if millis() - send_activation > 30000: # Kirim status aktif & update setting setiap 30 detik
 
         if x_server_emergency == 1:

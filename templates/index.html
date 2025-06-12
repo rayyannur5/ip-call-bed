@@ -4,25 +4,175 @@
     <meta charset="utf-8">
     <title>Nursecall Two Ways Device</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+      /* Semua CSS ada di sini */
+      body {
+          font-family: Arial, sans-serif;
+          background-color: #f4f4f4;
+          margin: 0;
+          padding: 0;
+      }
+
+      .container {
+          max-width: 600px;
+          margin: 50px auto;
+          background: #fff;
+          padding: 20px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+          box-sizing: border-box;
+      }
+
+      h1 {
+          text-align: center;
+          color: #333;
+      }
+
+      form {
+          display: flex;
+          flex-direction: column;
+      }
+
+      label {
+          margin: 10px 0 5px;
+      }
+
+      input {
+          padding: 10px;
+          margin-bottom: 10px;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+          width: 100%;
+          box-sizing: border-box;
+      }
+
+      button {
+          padding: 10px;
+          border: none;
+          color: white;
+          border-radius: 4px;
+          cursor: pointer;
+          width: 100%;
+          box-sizing: border-box;
+          margin-bottom: 10px;
+      }
+      
+      #scan-wifi-button {
+        background-color: #007bff;
+        margin-top: 10px;
+        margin-bottom: 15px;
+      }
+      #scan-wifi-button:hover {
+        background-color: #0056b3;
+      }
+      
+      #wifi-list-container {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        margin-bottom: 20px;
+        display: none;
+      }
+
+      #wifi-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+
+      #wifi-list li {
+        padding: 12px 15px;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      #wifi-list li:last-child {
+        border-bottom: none;
+      }
+
+      #wifi-list li:hover {
+        background-color: #f0f0f0;
+      }
+      
+      #wifi-list .wifi-ssid {
+        font-weight: bold;
+      }
+
+      #wifi-list .wifi-rssi {
+        font-size: 0.9em;
+        color: #555;
+      }
+
+      /* CSS BARU UNTUK INPUT STATIC IP */
+      .ip-input-group {
+        display: flex;
+        align-items: center;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        margin-bottom: 10px;
+      }
+      .ip-input-group:focus-within {
+        border-color: #80bdff;
+        box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+      }
+      .ip-prefix {
+        padding: 10px;
+        background-color: #e9ecef;
+        color: #495057;
+        border-right: 1px solid #ccc;
+      }
+      #last_octet_ip {
+        border: none; /* Hapus border bawaan karena sudah ada di parent */
+        flex-grow: 1; /* Biarkan input mengisi sisa ruang */
+        width: auto;
+        margin-bottom: 0; /* Hapus margin bawah karena sudah diatur oleh parent */
+      }
+      #last_octet_ip:focus {
+        outline: none; /* Hapus outline saat fokus */
+        box-shadow: none;
+      }
+      /* AKHIR CSS BARU */
+
+      button[type="submit"] {
+          background-color: #5cb85c;
+      }
+
+      button[type="submit"]:hover {
+          background-color: #4cae4c;
+      }
+
+      #reboot-button {
+          background-color: red;
+      }
+
+      #reboot-button:hover {
+          background-color: darkred;
+      }
+
+      @media (max-width: 600px) {
+          .container {
+              margin: 20px;
+              padding: 15px;
+          }
+      }
+    </style>
   </head>
   <body>
     <div class="container">
       <h1>Input Form</h1>
+
+      <button type="button" id="scan-wifi-button">Scan WiFi</button>
+
+      <div id="wifi-list-container">
+        <ul id="wifi-list"></ul>
+      </div>
+
       <form method="post">
         <label for="_id">ID</label>
         <input type="text" id="_id" name="id" value="{{ id }}"><br>
-
-        <label for="_nursesation">NURSESTATION</label>
-        <select id="_nursestation" name="nursestation">
-          <option value="">MANUAL SETTING</option>
-          <option value="1" {% if nursestation == "1" %}selected{% endif %}>1</option>
-          <option value="2" {% if nursestation == "2" %}selected{% endif %}>2</option>
-          <option value="3" {% if nursestation == "3" %}selected{% endif %}>3</option>
-          <option value="4" {% if nursestation == "4" %}selected{% endif %}>4</option>
-        </select>
-      
-        <br>
 
         <label for="_ssid">SSID</label>
         <input type="text" id="_ssid" name="ssid" value="{{ ssid }}"><br>
@@ -30,11 +180,82 @@
         <label for="_pswd">PASS</label>
         <input type="text" id="_pswd" name="pswd" value="{{ pswd }}"><br>
 
+        <label for="last_octet_ip">Static IP</label>
+        <div class="ip-input-group">
+          <span class="ip-prefix">192.168.0.</span>
+          <input 
+            type="number" 
+            id="last_octet_ip" 
+            min="1" 
+            max="254" 
+            placeholder="1-254"
+            value="{{ static_ip.split('.')[-1] if static_ip else '' }}">
+        </div>
+        <input type="hidden" id="full_static_ip" name="static_ip" value="{{ static_ip }}">
         <button type="submit">Save</button>
-	<a href="/reboot">
+        <a href="/reboot" style="text-decoration: none;">
            <button type="button" id="reboot-button">Reboot</button>
-	</a>
+        </a>
       </form>
     </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        // --- Bagian Scan WiFi (tidak diubah) ---
+        const scanButton = document.getElementById('scan-wifi-button');
+        const wifiListContainer = document.getElementById('wifi-list-container');
+        const wifiList = document.getElementById('wifi-list');
+        const ssidInput = document.getElementById('_ssid');
+
+        scanButton.addEventListener('click', function() {
+          wifiList.innerHTML = '<li>Mencari jaringan...</li>';
+          wifiListContainer.style.display = 'block';
+          fetch('/scan')
+            .then(response => response.ok ? response.json() : Promise.reject('Gagal mengambil data WiFi'))
+            .then(data => {
+              wifiList.innerHTML = ''; 
+              if (data.length === 0) {
+                wifiList.innerHTML = '<li>Tidak ada jaringan WiFi ditemukan.</li>';
+                return;
+              }
+              const sortedNetworks = data
+                .filter(net => net.SSID && net.SSID.trim() !== '--')
+                .sort((a, b) => b.RSSI - a.RSSI);
+              sortedNetworks.forEach(network => {
+                const listItem = document.createElement('li');
+                listItem.innerHTML = `<span class="wifi-ssid">${network.SSID}</span><span class="wifi-rssi">Sinyal: ${network.RSSI}%</span>`;
+                listItem.addEventListener('click', () => { ssidInput.value = network.SSID; });
+                wifiList.appendChild(listItem);
+              });
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              wifiList.innerHTML = `<li>Error: ${error.toString()}</li>`;
+            });
+        });
+
+        // --- BAGIAN BARU UNTUK STATIC IP ---
+        const lastOctetInput = document.getElementById('last_octet_ip');
+        const hiddenIpInput = document.getElementById('full_static_ip');
+        const ipPrefix = '192.168.0.';
+
+        // Fungsi untuk mengupdate hidden input
+        function updateFullIp() {
+            const lastOctet = lastOctetInput.value;
+            // Hanya update jika ada isinya, jika tidak, kirim string kosong
+            hiddenIpInput.value = lastOctet ? ipPrefix + lastOctet : '';
+            console.log('Hidden IP value set to:', hiddenIpInput.value); // Untuk debug
+        }
+
+        // Panggil fungsi saat ada input di kotak angka terakhir
+        lastOctetInput.addEventListener('input', updateFullIp);
+        
+        // Panggil juga saat nilai berubah (misal: saat panah up/down ditekan)
+        lastOctetInput.addEventListener('change', updateFullIp);
+
+        // PENTING: Panggil sekali saat halaman dimuat untuk memastikan nilai awal sudah benar
+        updateFullIp();
+      });
+    </script>
   </body>
 </html>
