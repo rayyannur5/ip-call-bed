@@ -19,8 +19,6 @@ def scan_wifi():
         # Jalankan perintah `nmcli dev wifi`
         execute("nmcli dev wifi rescan")
         time.sleep(3)
-        execute("nmcli device disconnect wlan0")
-        time.sleep(3)
         output = execute("nmcli -f SSID,BSSID,SIGNAL device wifi")
 
         # Parsing output
