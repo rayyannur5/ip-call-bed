@@ -235,10 +235,11 @@ def setupLinphone():
     execute("linphonecsh init")
     execute(f"linphonecsh register --host {host} --username {username} --password {password}")
     timeout = millis() + 60000
-    while "registered" not in execute("linphonecsh status register"):
+    while "registered," not in execute("linphonecsh status register"):
         execute(f"gpio write {led_cancel} 0");
         if millis() > timeout: log_print("Gagal registrasi Linphone, reboot."); execute("reboot")
-        execute("linphonecsh iterate"); time.sleep(1)
+        execute(f"linphonecsh register --host {host} --username {username} --password {password}")
+        time.sleep(1)
         execute(f"gpio write {led_cancel} 1");
     log_print("Linphone terdaftar.")
     log_print("Mencari soundcard 'echo'...")
@@ -399,7 +400,7 @@ setup_network_upsert(ssid, pswd, static_ip)
 # 2. Inisialisasi Tombol
 call_button = Button(btn_call)
 infus_button = Button(btn_infus)
-emergency_button = Button(btn_emergency)
+emergency_button = Button(btn_emergency, debounce_ms=10)
 cancel_button = Button(btn_cancel, long_press_ms=10000)
 setup_button = Button(btn_setup, debounce_ms=10)
 
@@ -518,7 +519,8 @@ while True:
         send_activation = millis()
 
         # cek ip sekarang, jika beda maka register dan set ip
-        if current_ip != get_current_ip():
+        con_name = f"{ssid}-static"
+        if current_ip != get_current_ip(con_name):
             log_print("IP Berubah ketika runtime, set ip ulang dan reregister SIP")
             set_ip()
             setupLinphone()
