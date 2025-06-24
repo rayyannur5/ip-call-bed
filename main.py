@@ -121,9 +121,10 @@ username, password = id, id
 mic, vol, oncall = 100, 100, False
 state_btn_activity, timer_after_activity, timeout_time_activity = False, 60000, 60000
 timer_ping, send_activation = 0, 0
-before_calling, before_after_calling = 0, 0
+before_calling, before_after_calling, timer_timeout_calling = 0, 0, 0
 x_server_emergency, x_server_call, x_server_infus = 0,0,0
 mode_ap = False
+current_ip = ""
 
 # --- MQTT Callbacks ---
 def on_connect(client, userdata, flags, rc):
@@ -230,6 +231,7 @@ def setupLinphone():
         return
 
     log_print("Inisialisasi & Registrasi Linphone...")
+    execute("linphonecsh exit")
     execute("linphonecsh init")
     execute(f"linphonecsh register --host {host} --username {username} --password {password}")
     timeout = millis() + 60000
@@ -278,6 +280,7 @@ def setup_network_upsert(ssid: str, pswd: str, static_ip: str = None):
     Fungsi cerdas untuk setup jaringan: Membuat profil jika belum ada, atau
     MEMPERBARUI jika konfigurasi IP berubah. Fallback ke DHCP jika static_ip kosong.
     """
+    global current_ip
 
     if ssid == '':
         return
@@ -431,7 +434,7 @@ while True:
         log_print("Tombol PANGGIL ditekan.")
         execute("linphonecsh generic terminate")
         client.publish(f"call/{id}", payload="1", qos=1, retain=True)
-        calling.set(); state_btn_activity = True; player.stop(); playing.clear(); x_server_call = 1
+        calling.set(); state_btn_activity = True; player.stop(); playing.clear(); x_server_call = 1; timer_timeout_calling = millis()
 
     if infus_button.check() == "short_press":
         log_print("Tombol INFUS ditekan.")
@@ -442,7 +445,6 @@ while True:
         log_print("Tombol EMERGENCY ditekan.")
         client.publish(f"bed/{id}", payload="e", qos=1, retain=True)
         after_calling.set(); state_btn_activity = True; player.stop(); playing.clear(); x_server_emergency = 1
-
 
     cancel_button_state = cancel_button.check()
 
@@ -479,7 +481,10 @@ while True:
             log_print("Memutar audio stream latar belakang.")
             player.set_media(vlc.Media(f"http://{host}:8000/stream.mp3")); player.play(); time.sleep(0.5)
     if calling.is_set() and millis() - before_calling > 2000:
-        execute('ogg123 /home/nursecall/ip-call-bed/ringback.ogg'); before_calling = millis()
+        if not (millis() - timer_timeout_calling > 30000):
+            execute('ogg123 /home/nursecall/ip-call-bed/ringback.ogg'); before_calling = millis()
+        else :
+            x_server_call = 0
 
     if x_server_infus == 0 and x_server_call == 0 and x_server_emergency == 0:
         pass
@@ -511,4 +516,11 @@ while True:
         client.publish("aktif", payload=id, qos=0, retain=False)
         get_settings()
         send_activation = millis()
+
+        # cek ip sekarang, jika beda maka register dan set ip
+        if current_ip != get_current_ip():
+            log_print("IP Berubah ketika runtime, set ip ulang dan reregister SIP")
+            set_ip()
+            setupLinphone()
+
 
